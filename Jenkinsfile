@@ -10,7 +10,7 @@ pipeline {
 
         stage('Clone Repository') {
             steps {
-                git branch: 'main', url: 'https://github.com/yourusername/blue-green-cicd.git'
+                git branch: 'main', url: 'https://github.com/sahilmor16/blue-green.git'
             }
         }
 
