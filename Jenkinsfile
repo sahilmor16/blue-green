@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "sahilmor16/blue-green"
-        KUBE_CONFIG_CREDENTIALS = 'kubeconfig'  // Jenkins secret file with kubeconfig
+        KUBE_CONFIG_CREDENTIALS = "kubeconfig"   // Jenkins secret file
     }
 
     stages {
@@ -17,27 +17,34 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 script {
-                    IMAGE_TAG = "v${env.BUILD_NUMBER}" 
+                    IMAGE_TAG = "v${env.BUILD_NUMBER}"
                     echo "Building Docker image: ${DOCKER_IMAGE}:${IMAGE_TAG}"
-                    sh "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
 
-                    // Login and push
-                    withDockerRegistry(url: 'https://index.docker.io/v1/', credentialsId: 'dockerhub-creds') {
-                        sh "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
-                        sh "docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest"
-                        sh "docker push ${DOCKER_IMAGE}:latest"
+                    bat "docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} ."
+
+                    withDockerRegistry(
+                        url: 'https://index.docker.io/v1/',
+                        credentialsId: 'dockerhub-creds'
+                    ) {
+                        bat "docker push ${DOCKER_IMAGE}:${IMAGE_TAG}"
+                        bat "docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest"
+                        bat "docker push ${DOCKER_IMAGE}:latest"
                     }
                 }
             }
         }
 
-
         stage('Determine Live Deployment') {
             steps {
-                withCredentials([file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')]) {
+                withCredentials([
+                    file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
+                ]) {
                     script {
-                        CURRENT_VERSION = sh(
-                            script: "kubectl get svc myapp-service -o jsonpath='{.spec.selector.version}'",
+                        CURRENT_VERSION = bat(
+                            script: '''
+                            kubectl get svc myapp-service ^
+                            -o jsonpath="{.spec.selector.version}"
+                            ''',
                             returnStdout: true
                         ).trim()
 
@@ -49,8 +56,8 @@ pipeline {
                             STANDBY = "blue"
                         }
 
-                        echo "Current live deployment: ${LIVE}"
-                        echo "Standby deployment for new version: ${STANDBY}"
+                        echo "LIVE deployment    : ${LIVE}"
+                        echo "STANDBY deployment : ${STANDBY}"
                     }
                 }
             }
@@ -58,11 +65,15 @@ pipeline {
 
         stage('Deploy New Version to Standby') {
             steps {
-                withCredentials([file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')]) {
+                withCredentials([
+                    file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
+                ]) {
                     script {
-                        echo "Deploying ${STANDBY}-app with image ${DOCKER_IMAGE}:${IMAGE_TAG}"
-                        sh """
-                        kubectl set image deployment/${STANDBY}-app app=${DOCKER_IMAGE}:${IMAGE_TAG} --record
+                        echo "Deploying ${STANDBY} with ${DOCKER_IMAGE}:${IMAGE_TAG}"
+
+                        bat """
+                        kubectl set image deployment/${STANDBY}-app ^
+                        app=${DOCKER_IMAGE}:${IMAGE_TAG} --record
                         """
                     }
                 }
@@ -71,13 +82,16 @@ pipeline {
 
         stage('Health Check Standby') {
             steps {
-                withCredentials([file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')]) {
+                withCredentials([
+                    file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
+                ]) {
                     script {
+                        HEALTHY = false
                         try {
-                            sh "kubectl rollout status deployment/${STANDBY}-app --timeout=120s"
+                            bat "kubectl rollout status deployment/${STANDBY}-app --timeout=120s"
                             HEALTHY = true
-                        } catch(err) {
-                            HEALTHY = false
+                        } catch (err) {
+                            echo "Health check failed"
                         }
                     }
                 }
@@ -86,15 +100,18 @@ pipeline {
 
         stage('Switch Traffic to Standby') {
             when {
-                expression { return HEALTHY == true }
+                expression { HEALTHY == true }
             }
             steps {
-                withCredentials([file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')]) {
+                withCredentials([
+                    file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
+                ]) {
                     script {
-                        echo "Switching traffic to ${STANDBY}-app"
-                        sh """
-                        kubectl patch service myapp-service \
-                        -p '{\"spec\":{\"selector\":{\"app\":\"myapp\",\"version\":\"${STANDBY}\"}}}'
+                        echo "Switching traffic to ${STANDBY}"
+
+                        bat """
+                        kubectl patch service myapp-service ^
+                        -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"myapp\\",\\"version\\":\\"${STANDBY}\\"}}}"
                         """
                     }
                 }
@@ -103,15 +120,18 @@ pipeline {
 
         stage('Rollback on Failure') {
             when {
-                expression { return HEALTHY == false }
+                expression { HEALTHY == false }
             }
             steps {
-                script {
-                    echo "Deployment failed, rolling back to ${LIVE}-app"
-                    withCredentials([file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')]) {
-                        sh """
-                        kubectl patch service myapp-service \
-                        -p '{\"spec\":{\"selector\":{\"app\":\"myapp\",\"version\":\"${LIVE}\"}}}'
+                withCredentials([
+                    file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
+                ]) {
+                    script {
+                        echo "Rollback → switching back to ${LIVE}"
+
+                        bat """
+                        kubectl patch service myapp-service ^
+                        -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"myapp\\",\\"version\\":\\"${LIVE}\\"}}}"
                         """
                     }
                 }
