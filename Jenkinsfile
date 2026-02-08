@@ -6,12 +6,6 @@ pipeline {
         KUBE_CONFIG_CREDENTIALS = 'kubeconfig'  // Jenkins secret file with kubeconfig
     }
 
-    options {
-        timestamps()
-        ansiColor('xterm')
-        timeout(time: 60, unit: 'MINUTES')
-    }
-
     stages {
 
         stage('Clone Repository') {
