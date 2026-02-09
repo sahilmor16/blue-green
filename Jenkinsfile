@@ -40,24 +40,24 @@ pipeline {
                     file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
                 ]) {
                     script {
-                        def currentVersion = bat(
+                        def CURRENT_VERSION = bat(
                             script: '''
-                            kubectl get svc myapp-service `
+                            kubectl get svc myapp-service ^
                             -o jsonpath="{.spec.selector.version}"
                             ''',
                             returnStdout: true
                         ).trim()
+                        
+                        echo "Service selector version = ${CURRENT_VERSION}"
 
-                        echo "Service selector version = ${currentVersion}"
-
-                        if (currentVersion == "blue") {
+                        if (CURRENT_VERSION == "blue") {
                             env.LIVE = "blue"
                             env.STANDBY = "green"
-                        } else if (currentVersion == "green") {
+                        } else if (CURRENT_VERSION == "green") {
                             env.LIVE = "green"
                             env.STANDBY = "blue"
                         } else {
-                            error "Unknown service version: ${currentVersion}"
+                            error "Unknown service version: ${CURRENT_VERSION}"
                         }
 
                         echo "LIVE deployment    : ${env.LIVE}"
