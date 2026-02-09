@@ -40,7 +40,7 @@ pipeline {
                     file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
                 ]) {
                     script {
-                        def currentVersion = powershell(
+                        def currentVersion = bat(
                             script: '''
                             kubectl get svc myapp-service `
                             -o jsonpath="{.spec.selector.version}"
