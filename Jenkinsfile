@@ -40,24 +40,28 @@ pipeline {
                     file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
                 ]) {
                     script {
-                        CURRENT_VERSION = bat(
+                        def currentVersion = powershell(
                             script: '''
-                            kubectl get svc myapp-service ^
+                            kubectl get svc myapp-service `
                             -o jsonpath="{.spec.selector.version}"
                             ''',
                             returnStdout: true
                         ).trim()
 
-                        if (CURRENT_VERSION == "blue") {
-                            LIVE = "blue"
-                            STANDBY = "green"
+                        echo "Service selector version = ${currentVersion}"
+
+                        if (currentVersion == "blue") {
+                            env.LIVE = "blue"
+                            env.STANDBY = "green"
+                        } else if (currentVersion == "green") {
+                            env.LIVE = "green"
+                            env.STANDBY = "blue"
                         } else {
-                            LIVE = "green"
-                            STANDBY = "blue"
+                            error "Unknown service version: ${currentVersion}"
                         }
 
-                        echo "LIVE deployment    : ${LIVE}"
-                        echo "STANDBY deployment : ${STANDBY}"
+                        echo "LIVE deployment    : ${env.LIVE}"
+                        echo "STANDBY deployment : ${env.STANDBY}"
                     }
                 }
             }
@@ -72,7 +76,7 @@ pipeline {
                         echo "Deploying ${STANDBY} with ${DOCKER_IMAGE}:${IMAGE_TAG}"
 
                         bat """
-                        kubectl set image deployment/${STANDBY}-app ^
+                        kubectl set image deployment/${env.STANDBY}-app ^
                         app=${DOCKER_IMAGE}:${IMAGE_TAG} --record
                         """
                     }
@@ -86,10 +90,10 @@ pipeline {
                     file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
                 ]) {
                     script {
-                        HEALTHY = false
+                        env.HEALTHY = false
                         try {
-                            bat "kubectl rollout status deployment/${STANDBY}-app --timeout=120s"
-                            HEALTHY = true
+                            bat "kubectl rollout status deployment/${env.STANDBY}-app --timeout=120s"
+                            env.HEALTHY = true
                         } catch (err) {
                             echo "Health check failed"
                         }
@@ -100,18 +104,18 @@ pipeline {
 
         stage('Switch Traffic to Standby') {
             when {
-                expression { HEALTHY == true }
+                expression { env.HEALTHY == true }
             }
             steps {
                 withCredentials([
                     file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
                 ]) {
                     script {
-                        echo "Switching traffic to ${STANDBY}"
+                        echo "Switching traffic to ${env.STANDBY}"
 
                         bat """
                         kubectl patch service myapp-service ^
-                        -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"myapp\\",\\"version\\":\\"${STANDBY}\\"}}}"
+                        -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"myapp\\",\\"version\\":\\"${env.STANDBY}\\"}}}"
                         """
                     }
                 }
@@ -120,18 +124,18 @@ pipeline {
 
         stage('Rollback on Failure') {
             when {
-                expression { HEALTHY == false }
+                expression { env.HEALTHY == false }
             }
             steps {
                 withCredentials([
                     file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
                 ]) {
                     script {
-                        echo "Rollback → switching back to ${LIVE}"
+                        echo "Rollback → switching back to ${env.LIVE}"
 
                         bat """
                         kubectl patch service myapp-service ^
-                        -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"myapp\\",\\"version\\":\\"${LIVE}\\"}}}"
+                        -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"myapp\\",\\"version\\":\\"${env.LIVE}\\"}}}"
                         """
                     }
                 }
