@@ -41,10 +41,7 @@ pipeline {
                 ]) {
                     script {
                         def CURRENT_VERSION = powershell(
-                            script: '''
-                            kubectl get svc myapp-service ^
-                            -o jsonpath="{.spec.selector.version}"
-                            ''',
+                            script: 'kubectl get svc myapp-service -o jsonpath="{.spec.selector.version}"',
                             returnStdout: true
                         ).trim()
                         
