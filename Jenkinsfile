@@ -87,10 +87,10 @@ pipeline {
                     file(credentialsId: "${KUBE_CONFIG_CREDENTIALS}", variable: 'KUBECONFIG')
                 ]) {
                     script {
-                        env.HEALTHY = false
+                        env.HEALTHY = "false"
                         try {
                             bat "kubectl rollout status deployment/${env.STANDBY}-app --timeout=120s"
-                            env.HEALTHY = true
+                            env.HEALTHY = "true"
                         } catch (err) {
                             echo "Health check failed"
                         }
@@ -101,7 +101,7 @@ pipeline {
 
         stage('Switch Traffic to Standby') {
             when {
-                expression { env.HEALTHY == true }
+                expression { env.HEALTHY == "true" }
             }
             steps {
                 withCredentials([
@@ -121,7 +121,7 @@ pipeline {
 
         stage('Rollback on Failure') {
             when {
-                expression { env.HEALTHY == false }
+                expression { env.HEALTHY == "false" }
             }
             steps {
                 withCredentials([
